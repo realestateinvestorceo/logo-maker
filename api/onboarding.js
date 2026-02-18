@@ -1,4 +1,4 @@
-import pdf from 'pdf-parse'
+import { PDFParse } from 'pdf-parse'
 import { callClaudeWithTool, callClaudeWithVision } from './_lib/claude.js'
 
 export const config = { api: { bodyParser: false } }
@@ -77,12 +77,16 @@ async function handleParsePdf(req, res) {
     return res.status(400).json({ error: 'No PDF file found in upload' })
   }
 
-  const result = await pdf(pdfBuffer)
+  const parser = new PDFParse({ data: new Uint8Array(pdfBuffer) })
+  await parser.load()
+  const textResult = await parser.getText()
+  const infoResult = await parser.getInfo()
+  parser.destroy()
 
   res.status(200).json({
-    text: result.text,
-    pages: result.numpages,
-    info: result.info,
+    text: textResult.text,
+    pages: textResult.total,
+    info: infoResult.info,
   })
 }
 
