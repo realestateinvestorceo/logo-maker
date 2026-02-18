@@ -1,33 +1,15 @@
 import pdf from 'pdf-parse/lib/pdf-parse.js'
 import { callClaudeWithTool, callClaudeWithVision } from './_lib/claude.js'
-
-export const config = { api: { bodyParser: false } }
+import { supabase } from './_lib/supabase.js'
 
 export default async function handler(req, res) {
   try {
-    // For parse-pdf, we need raw body (multipart)
-    // For other actions, we need JSON body
-    // Detect via query param or content-type
     const action = req.query.action
 
-    if (action === 'parse-pdf') {
-      return handleParsePdf(req, res)
-    }
-
-    // Parse JSON body manually since bodyParser is disabled
-    const body = await parseJsonBody(req)
-
-    if (action === 'extract-company') {
-      return handleExtractCompany(body, res)
-    }
-
-    if (action === 'analyze-logo') {
-      return handleAnalyzeLogo(body, res)
-    }
-
-    if (action === 'analyze-competitors') {
-      return handleAnalyzeCompetitors(body, res)
-    }
+    if (action === 'parse-pdf') return handleParsePdf(req, res)
+    if (action === 'extract-company') return handleExtractCompany(req.body, res)
+    if (action === 'analyze-logo') return handleAnalyzeLogo(req.body, res)
+    if (action === 'analyze-competitors') return handleAnalyzeCompetitors(req.body, res)
 
     return res.status(400).json({ error: 'Invalid action. Use: parse-pdf, extract-company, analyze-logo, analyze-competitors' })
   } catch (err) {
@@ -35,48 +17,25 @@ export default async function handler(req, res) {
   }
 }
 
-async function parseJsonBody(req) {
-  const chunks = []
-  for await (const chunk of req) {
-    chunks.push(chunk)
-  }
-  const raw = Buffer.concat(chunks).toString('utf8')
-  return JSON.parse(raw)
-}
-
 async function handleParsePdf(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const chunks = []
-  for await (const chunk of req) {
-    chunks.push(chunk)
-  }
-  const body = Buffer.concat(chunks)
+  const { storagePath } = req.body
 
-  const boundary = req.headers['content-type']?.split('boundary=')[1]
-  if (!boundary) {
-    return res.status(400).json({ error: 'Missing multipart boundary' })
+  if (!storagePath) {
+    return res.status(400).json({ error: 'storagePath is required' })
   }
 
-  const bodyStr = body.toString('latin1')
-  const parts = bodyStr.split(`--${boundary}`)
-  let pdfBuffer = null
+  // Download PDF from Supabase Storage
+  const { data, error: dlError } = await supabase.storage
+    .from('uploads')
+    .download(storagePath)
 
-  for (const part of parts) {
-    if (part.includes('application/pdf') || part.includes('.pdf')) {
-      const headerEnd = part.indexOf('\r\n\r\n')
-      if (headerEnd !== -1) {
-        const content = part.slice(headerEnd + 4)
-        const cleanContent = content.replace(/\r\n--$/, '').replace(/\r\n$/, '')
-        pdfBuffer = Buffer.from(cleanContent, 'latin1')
-      }
-    }
+  if (dlError || !data) {
+    return res.status(400).json({ error: 'Could not download PDF from storage: ' + (dlError?.message || 'unknown') })
   }
 
-  if (!pdfBuffer) {
-    return res.status(400).json({ error: 'No PDF file found in upload' })
-  }
-
+  const pdfBuffer = Buffer.from(await data.arrayBuffer())
   const result = await pdf(pdfBuffer)
 
   res.status(200).json({

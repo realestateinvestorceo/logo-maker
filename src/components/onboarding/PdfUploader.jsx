@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { supabase } from '../../lib/supabaseClient'
 import { api } from '../../lib/api'
 import LoadingSpinner from '../shared/LoadingSpinner'
 
@@ -17,13 +18,24 @@ export default function PdfUploader({ onExtracted }) {
 
     setFile(selectedFile)
     setLoading(true)
-    setStatus({ type: 'info', message: 'Extracting text from PDF...' })
+    setStatus({ type: 'info', message: 'Uploading PDF...' })
 
     try {
-      const formData = new FormData()
-      formData.append('file', selectedFile)
+      // Upload PDF to Supabase Storage (bypasses Vercel 4.5MB body limit)
+      const fileName = `pdfs/${Date.now()}-${selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+      const { error: uploadError } = await supabase.storage
+        .from('uploads')
+        .upload(fileName, selectedFile, {
+          contentType: 'application/pdf',
+          upsert: true,
+        })
 
-      const parseResult = await api.parsePdf(formData)
+      if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`)
+
+      setStatus({ type: 'info', message: 'Extracting text from PDF...' })
+
+      // Call API with storage path instead of file data
+      const parseResult = await api.parsePdf({ storagePath: fileName })
       setStatus({ type: 'info', message: 'Claude is analyzing your document...' })
 
       const extractResult = await api.extractCompany({ text: parseResult.text })

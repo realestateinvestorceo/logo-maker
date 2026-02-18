@@ -46,7 +46,7 @@ export const api = {
   updateProject: (id, data) => request('/project?action=update', { body: { id, ...data } }),
 
   // Onboarding
-  parsePdf: (formData) => request('/onboarding?action=parse-pdf', { body: formData }),
+  parsePdf: (data) => request('/onboarding?action=parse-pdf', { body: data }),
   extractCompany: (data) => request('/onboarding?action=extract-company', { body: data }),
   analyzeLogo: (data) => request('/onboarding?action=analyze-logo', { body: data }),
   analyzeCompetitors: (data) => request('/onboarding?action=analyze-competitors', { body: data }),
